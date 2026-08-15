@@ -1,3 +1,4 @@
+import os
 from typing import List, Optional, Union
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -40,7 +41,7 @@ class Settings(BaseSettings):
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     # CORS Configuration
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    ALLOWED_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
@@ -51,8 +52,13 @@ class Settings(BaseSettings):
             return v
         raise ValueError(v)
 
+    # LLM Settings
+    GEMINI_API_KEY: Optional[str] = None
+    # Note: Confirm the current Gemini model name before running in production
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=tuple(f for f in [".env.local", ".env"] if os.path.exists(f)) if any(os.path.exists(f) for f in [".env.local", ".env"]) else None,
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",

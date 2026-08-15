@@ -33,6 +33,7 @@ class Job(Base):
         default=JobStatus.PENDING,
         index=True,
     )
+    error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

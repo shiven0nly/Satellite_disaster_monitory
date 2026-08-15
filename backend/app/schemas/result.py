@@ -33,6 +33,13 @@ class ResultUpdate(BaseModel):
     raw_model_output: Optional[Dict[str, Any]] = None
 
 
+class ParsedResult(ResultBase):
+    """
+    Structured assessment output produced by LLM parsing from ML model predictions.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ResultRead(ResultBase):
     id: UUID
     job_id: UUID

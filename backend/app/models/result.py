@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from sqlalchemy import DateTime, Enum as SQLEnum, Float, ForeignKey, String, Text, func
+from sqlalchemy import JSON, DateTime, Enum as SQLEnum, Float, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -39,7 +39,9 @@ class Result(Base):
     confidence_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    raw_model_output: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    raw_model_output: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

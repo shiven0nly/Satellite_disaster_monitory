@@ -21,11 +21,13 @@ class JobUpdate(BaseModel):
     image_url: Optional[str] = None
     image_type: Optional[ImageType] = None
     status: Optional[JobStatus] = None
+    error_message: Optional[str] = None
 
 
 class JobRead(JobBase):
     id: UUID
     status: JobStatus
+    error_message: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     result: Optional[ResultRead] = None
