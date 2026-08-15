@@ -1,8 +1,8 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import ImageType, JobStatus
 from app.schemas.result import ResultRead
@@ -31,3 +31,10 @@ class JobRead(JobBase):
     result: Optional[ResultRead] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class JobListResponse(BaseModel):
+    total: int = Field(..., example=42)
+    skip: int = Field(..., example=0)
+    limit: int = Field(..., example=20)
+    jobs: List[JobRead]
