@@ -1,0 +1,33 @@
+from datetime import datetime
+from typing import Optional
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+
+from app.models.enums import ImageType, JobStatus
+from app.schemas.result import ResultRead
+
+
+class JobBase(BaseModel):
+    image_url: str = Field(..., example="https://storage.provider.com/images/sat_01.jpg")
+    image_type: ImageType = Field(default=ImageType.OTHER)
+
+
+class JobCreate(JobBase):
+    pass
+
+
+class JobUpdate(BaseModel):
+    image_url: Optional[str] = None
+    image_type: Optional[ImageType] = None
+    status: Optional[JobStatus] = None
+
+
+class JobRead(JobBase):
+    id: UUID
+    status: JobStatus
+    created_at: datetime
+    updated_at: datetime
+    result: Optional[ResultRead] = None
+
+    model_config = ConfigDict(from_attributes=True)
