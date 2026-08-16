@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Dict, Literal
+from typing import Dict, Literal, List, Optional
 
 class BandStats(BaseModel):
     mean_intensity: float
@@ -13,10 +13,22 @@ class PredictionResult(BaseModel):
     image_type_detected: Literal["IR", "thermal", "RGB", "SAR"]
     band_stats: BandStats
 
+class HistoryRecord(BaseModel):
+    id: str
+    filename: str
+    timestamp: str
+    prediction: PredictionResult
+    explanation: str
+
 class AnalysisResponse(BaseModel):
     prediction: PredictionResult
     explanation: str
     status: str = "success"
+    history_record: Optional[HistoryRecord] = None
+
+class HistoryListResponse(BaseModel):
+    history: List[HistoryRecord]
+    total: int
 
 class HealthResponse(BaseModel):
     status: str = "ok"

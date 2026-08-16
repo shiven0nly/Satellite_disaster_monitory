@@ -4,9 +4,10 @@ from fastapi.responses import JSONResponse
 import io
 from PIL import Image
 
-from app.schemas import AnalysisResponse, HealthResponse, ErrorResponse
+from app.schemas import AnalysisResponse, HealthResponse, ErrorResponse, HistoryListResponse
 from app.model import analyze_image
 from app.llm_service import explain_prediction
+from app.history import add_to_history, get_history, clear_history
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB limit
 
@@ -30,6 +31,18 @@ def health_check():
     """Service health check endpoint."""
     return HealthResponse(status="ok")
 
+@app.get("/history", response_model=HistoryListResponse)
+def get_analysis_history():
+    """Retrieve all past satellite image analysis reports."""
+    records = get_history()
+    return HistoryListResponse(history=records, total=len(records))
+
+@app.delete("/history")
+def delete_analysis_history():
+    """Clear all stored analysis history."""
+    clear_history()
+    return {"status": "success", "message": "Analysis history cleared"}
+
 @app.post(
     "/analyze",
     response_model=AnalysisResponse,
@@ -39,7 +52,7 @@ def health_check():
     }
 )
 async def analyze_disaster_image(file: UploadFile = File(...)):
-    """Accepts an uploaded satellite image, performs analysis, and returns explanation."""
+    """Accepts an uploaded satellite image, performs analysis, generates LLM brief, and saves report to history."""
     # 1. Content-Type check
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(
@@ -79,11 +92,19 @@ async def analyze_disaster_image(file: UploadFile = File(...)):
         # 5. LLM explanation call
         explanation = explain_prediction(prediction_dict)
 
-        # 6. Structured Pydantic response
+        # 6. Save report to backend history store
+        history_record = add_to_history(
+            filename=file.filename or "satellite_image.jpg",
+            prediction=prediction_dict,
+            explanation=explanation
+        )
+
+        # 7. Structured Pydantic response with history record
         return AnalysisResponse(
             prediction=prediction_dict,
             explanation=explanation,
-            status="success"
+            status="success",
+            history_record=history_record
         )
     except Exception as e:
         # Prevent stack trace leakage to client
