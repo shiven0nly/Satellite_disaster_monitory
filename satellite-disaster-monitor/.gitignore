@@ -5,3 +5,7 @@ __pycache__/
 *.pyc
 .env
 .pytest_cache/
+.streamlit/secrets.toml
+secrets.toml
+
+DEPLOY.md
