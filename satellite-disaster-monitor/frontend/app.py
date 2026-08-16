@@ -1,0 +1,1 @@
+import streamlit as st`nfrom utils.api_client import check_backend_health`n`nst.title("Satellite Disaster Monitoring Dashboard")`n`nst.write("Status: Streamlit UI operational")`nhealth = check_backend_health()`nst.write("Backend Health Check:", health)
