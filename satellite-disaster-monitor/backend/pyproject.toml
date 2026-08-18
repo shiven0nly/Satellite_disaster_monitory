@@ -13,5 +13,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "python-multipart>=0.0.32",
     "scikit-learn>=1.9.0",
+    "torch>=2.13.0",
+    "torchvision>=0.28.0",
     "uvicorn[standard]>=0.52.3",
 ]
