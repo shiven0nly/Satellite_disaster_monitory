@@ -96,12 +96,14 @@ tab_analyze, tab_history = st.tabs(["🔍 Real-Time Analysis", "📜 Analysis Hi
 # ═══════════════════════ TAB 1 : REAL-TIME ANALYSIS ══════════════════════════
 with tab_analyze:
     st.write(
-        "Upload **three multi-modal satellite images** (Optical · SAR · Thermal IR) "
-        "for ensemble disaster detection and Groq LLM-generated assessment."
+        "Upload **one, two, or three satellite images** (Optical · SAR · Thermal IR) "
+        "to run trained ML model disaster detection and Groq LLM-generated assessment."
     )
 
     # ── Three-column upload row ──────────────────────────────────────────────
     up_col1, up_col2, up_col3 = st.columns(3, gap="medium")
+
+    import io
 
     with up_col1:
         st.markdown('<div class="sensor-label">🔵 Optical Image</div>', unsafe_allow_html=True)
@@ -112,7 +114,7 @@ with tab_analyze:
             label_visibility="collapsed",
         )
         if optical_file:
-            st.image(Image.open(optical_file), use_container_width=True, caption="Optical")
+            st.image(Image.open(io.BytesIO(optical_file.getvalue())), use_container_width=True, caption="Optical")
 
     with up_col2:
         st.markdown('<div class="sensor-label">🟣 SAR Image</div>', unsafe_allow_html=True)
@@ -123,7 +125,7 @@ with tab_analyze:
             label_visibility="collapsed",
         )
         if sar_file:
-            st.image(Image.open(sar_file), use_container_width=True, caption="SAR")
+            st.image(Image.open(io.BytesIO(sar_file.getvalue())), use_container_width=True, caption="SAR")
 
     with up_col3:
         st.markdown('<div class="sensor-label">🔴 Thermal IR Image</div>', unsafe_allow_html=True)
@@ -134,58 +136,59 @@ with tab_analyze:
             label_visibility="collapsed",
         )
         if thermal_file:
-            st.image(Image.open(thermal_file), use_container_width=True, caption="Thermal IR")
+            st.image(Image.open(io.BytesIO(thermal_file.getvalue())), use_container_width=True, caption="Thermal IR")
 
     # ── Action buttons ───────────────────────────────────────────────────────
-    all_uploaded = optical_file and sar_file and thermal_file
+    any_uploaded = bool(optical_file or sar_file or thermal_file)
     st.write("")  # visual spacing
 
     btn_a, btn_b = st.columns([3, 1])
     with btn_a:
         analyze_clicked = st.button(
-            "🔍 Analyze All Three Satellite Images",
+            "🔍 Analyze Uploaded Satellite Imagery",
             use_container_width=True,
             type="primary",
-            disabled=not all_uploaded,
+            disabled=not any_uploaded,
         )
     with btn_b:
         st.button("🔄 Reset", use_container_width=True, on_click=reset_analysis)
 
-    if not all_uploaded:
-        st.info("📂 Please upload all three sensor images above before analyzing.")
+    if not any_uploaded:
+        st.info("📂 Please upload at least one satellite image above to begin analysis.")
 
-    if analyze_clicked and all_uploaded:
+    current_key = f"{optical_file.name if optical_file else ''}|{sar_file.name if sar_file else ''}|{thermal_file.name if thermal_file else ''}"
+
+    if analyze_clicked and any_uploaded:
         reset_analysis()
-        session_key = f"{optical_file.name}|{sar_file.name}|{thermal_file.name}"
-        st.session_state["analyzed_key"] = session_key
+        st.session_state["analyzed_key"] = current_key
 
         start = time.time()
-        with st.spinner("Running multi-sensor ensemble model + Groq LLM analysis..."):
+        with st.spinner("Running trained ML flood detection model + Groq LLM assessment..."):
             ok, data = analyze_image(
-                optical_bytes=optical_file.getvalue(),
-                optical_name=optical_file.name,
-                optical_mime=optical_file.type or "image/jpeg",
-                sar_bytes=sar_file.getvalue(),
-                sar_name=sar_file.name,
-                sar_mime=sar_file.type or "image/jpeg",
-                thermal_bytes=thermal_file.getvalue(),
-                thermal_name=thermal_file.name,
-                thermal_mime=thermal_file.type or "image/jpeg",
+                optical_bytes=optical_file.getvalue() if optical_file else None,
+                optical_name=optical_file.name if optical_file else None,
+                optical_mime=optical_file.type if optical_file else None,
+                sar_bytes=sar_file.getvalue() if sar_file else None,
+                sar_name=sar_file.name if sar_file else None,
+                sar_mime=sar_file.type if sar_file else None,
+                thermal_bytes=thermal_file.getvalue() if thermal_file else None,
+                thermal_name=thermal_file.name if thermal_file else None,
+                thermal_mime=thermal_file.type if thermal_file else None,
                 backend_url=backend_url,
             )
         st.session_state["processing_time"] = round(time.time() - start, 2)
 
         if ok:
             st.session_state["analysis_results"] = data
-            st.toast("✅ Multi-sensor analysis complete & saved to history!", icon="🛰️")
+            st.toast("✅ Satellite disaster analysis complete & saved to history!", icon="🛰️")
         else:
             st.error(data.get("error", "An unknown error occurred."))
 
     # ── Results panel ────────────────────────────────────────────────────────
     results = st.session_state.get("analysis_results")
-    current_key = f"{optical_file.name}|{sar_file.name}|{thermal_file.name}" if all_uploaded else None
 
     if results and st.session_state.get("analyzed_key") == current_key:
+
         st.divider()
         st.subheader("📊 Assessment & Intelligence")
 

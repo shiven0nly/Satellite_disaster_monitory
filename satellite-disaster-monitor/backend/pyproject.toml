@@ -12,5 +12,6 @@ dependencies = [
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
     "python-multipart>=0.0.32",
+    "scikit-learn>=1.9.0",
     "uvicorn[standard]>=0.52.3",
 ]
