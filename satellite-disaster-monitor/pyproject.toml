@@ -3,11 +3,16 @@ name = "satellite-disaster-monitor"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
-dependencies = []
+requires-python = ">=3.13"
+dependencies = [
+    "opencv-python>=5.0.0.93",
+    "rasterio>=1.5.1",
+    "tifffile>=2026.8.16",
+]
 
 [tool.uv.workspace]
 members = [
     "backend",
     "frontend",
+    "backend2",
 ]

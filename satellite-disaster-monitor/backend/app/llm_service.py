@@ -11,7 +11,7 @@ class LLMService:
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
 
     def explain_prediction(self, prediction_dict: Dict[str, Any]) -> str:
-        """Generate disaster assessment brief using Groq LLM (llama-3.3-70b-versatile) with system prompt & prompt builder."""
+        """Generate disaster assessment brief using Groq LLM (openai/gpt-oss-120b) with system prompt & prompt builder."""
         api_key = self.api_key or os.getenv("GROQ_API_KEY")
         user_prompt = build_analysis_prompt(prediction_dict)
 
@@ -20,7 +20,7 @@ class LLMService:
                 from groq import Groq
                 client = Groq(api_key=api_key)
                 completion = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="openai/gpt-oss-120b",
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": user_prompt}

@@ -8,5 +8,6 @@ __pycache__/
 .streamlit/secrets.toml
 secrets.toml
 backend/models/
+backend2/
 
 DEPLOY.md

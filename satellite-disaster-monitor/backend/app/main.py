@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from PIL import Image
 
 from app.schemas import AnalysisResponse, HealthResponse, ErrorResponse, HistoryListResponse
-from app.model import analyze_multimodal_images, analyze_landslide_images
+from app.model import analyze_multimodal_images, analyze_landslide_images, analyze_wildfire_images
 from app.llm_service import explain_prediction
 from app.history import add_to_history, get_history, clear_history
 
@@ -16,8 +16,8 @@ MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB per file limit
 
 app = FastAPI(
     title="Satellite Disaster Monitoring API",
-    version="0.2.0",
-    description="FastAPI service for Flood & Landslide disaster assessment using trained ML models"
+    version="0.3.0",
+    description="FastAPI service for Flood, Landslide & Wildfire disaster assessment using trained ML models"
 )
 
 # CORS Middleware
@@ -50,6 +50,14 @@ def delete_analysis_history():
     return {"status": "success", "message": "Analysis history cleared"}
 
 
+@app.get("/reload_models")
+def reload_models():
+    """Clear cached ML models in memory so they reload cleanly."""
+    from app.model import reset_loaded_models
+    reset_loaded_models()
+    return {"status": "success", "message": "ML model memory cache cleared successfully"}
+
+
 @app.post(
     "/analyze",
     response_model=AnalysisResponse,
@@ -66,9 +74,19 @@ async def analyze_disaster_images(
     landslide_optical_file: Optional[UploadFile] = File(None),
     landslide_dem_file: Optional[UploadFile] = File(None),
     landslide_sar_file: Optional[UploadFile] = File(None),
+    wildfire_thermal_file: Optional[UploadFile] = File(None),
+    wildfire_optical_file: Optional[UploadFile] = File(None),
+    wildfire_sar_file: Optional[UploadFile] = File(None),
 ):
-    """Accepts satellite images for Flood or Landslide detection, runs trained ML models, and generates Groq LLM assessment."""
+    """Accepts satellite images for Flood, Landslide, or Wildfire detection, runs trained ML models, and generates Groq LLM assessment."""
     
+    is_wildfire_request = (
+        model_type == "wildfire" or
+        wildfire_thermal_file is not None or
+        wildfire_optical_file is not None or
+        wildfire_sar_file is not None
+    )
+
     is_landslide_request = (
         model_type == "landslide" or
         landslide_optical_file is not None or
@@ -76,7 +94,79 @@ async def analyze_disaster_images(
         landslide_sar_file is not None
     )
 
-    if is_landslide_request:
+    if is_wildfire_request:
+        # Wildfire ML Pipeline
+        active_wildfire_files = {
+            "Thermal IR Hotspot": wildfire_thermal_file or thermal_file,
+            "Optical Smoke & Burn": wildfire_optical_file or optical_file,
+            "SAR Radar Penetration": wildfire_sar_file or sar_file
+        }
+        active_files = {name: f for name, f in active_wildfire_files.items() if f is not None and f.filename}
+
+        if not active_files:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one wildfire imagery file (Thermal IR, Optical, or SAR) must be uploaded."
+            )
+
+        image_bytes_dict = {}
+        filenames_used = []
+
+        for sensor_name, file in active_files.items():
+            try:
+                raw_bytes = await file.read()
+                if len(raw_bytes) > MAX_FILE_SIZE:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"{sensor_name} file exceeds 20MB limit."
+                    )
+                # Attempt to open just to verify it's an image, but gracefully accept if PIL fails
+                try:
+                    img = Image.open(io.BytesIO(raw_bytes))
+                    img.verify()
+                except Exception as e:
+                    logger.warning(f"PIL could not verify {sensor_name} ({file.filename}): {e}. Passing raw bytes through.")
+                
+                image_bytes_dict[sensor_name] = raw_bytes
+                filenames_used.append(f"{sensor_name}: {file.filename}")
+            except HTTPException:
+                raise
+            except Exception as err:
+                logger.error(f"Error validating {sensor_name}: {err}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"{sensor_name} file '{file.filename}' is corrupted or invalid."
+                )
+
+        try:
+            prediction_dict = analyze_wildfire_images(
+                thermal_bytes=image_bytes_dict.get("Thermal IR Hotspot"),
+                optical_bytes=image_bytes_dict.get("Optical Smoke & Burn"),
+                sar_bytes=image_bytes_dict.get("SAR Radar Penetration")
+            )
+
+            explanation = explain_prediction(prediction_dict)
+
+            filename_str = "[Wildfire Model] " + ", ".join(filenames_used)
+            history_record = add_to_history(
+                filename=filename_str,
+                prediction=prediction_dict,
+                explanation=explanation
+            )
+
+            return AnalysisResponse(
+                prediction=prediction_dict,
+                explanation=explanation,
+                status="success",
+                history_record=history_record
+            )
+        except Exception as e:
+            logger.exception(f"Internal error during wildfire analysis: {e}")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"status": "error", "detail": f"Wildfire analysis error: {str(e)}"}
+            )
+    elif is_landslide_request:
         # Landslide ML Pipeline
         active_landslide_files = {
             "Landslide Optical": landslide_optical_file or optical_file,

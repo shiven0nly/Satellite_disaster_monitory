@@ -3,6 +3,24 @@ import os
 import time
 import streamlit as st
 from PIL import Image
+import numpy as np
+
+
+def safe_preview(file_bytes: bytes, caption: str = ""):
+    """Show image preview; gracefully handle GeoTIFF / multi-band files that PIL can't display."""
+    try:
+        img = Image.open(io.BytesIO(file_bytes))
+        img.load()  # force decode
+        st.image(img, use_container_width=True, caption=caption)
+    except Exception:
+        try:
+            import rasterio
+            with rasterio.open(io.BytesIO(file_bytes)) as src:
+                band = src.read(1)
+                band_norm = ((band - band.min()) / (band.max() - band.min() + 1e-8) * 255).astype(np.uint8)
+                st.image(band_norm, use_container_width=True, caption=f"{caption} (Band 1 preview)")
+        except Exception:
+            st.info(f"📎 **{caption}** — file accepted (preview unavailable for this format)")
 
 from utils.api_client import (
     analyze_image,
@@ -87,6 +105,7 @@ with st.sidebar:
     st.markdown("**Active ML Models**")
     st.caption("🌊 Flood: HistGradientBoosting + SAR RF")
     st.caption("⛰️ Landslide: PyTorch ResNet34 UNet")
+    st.caption("🔥 Wildfire: TensorFlow CNN (.h5)")
     st.divider()
     st.caption("Satellite Disaster Assessment System v0.3.0")
 
@@ -111,18 +130,21 @@ with tab_analyze:
     # ── Model Mode Selector ──────────────────────────────────────────────────
     selected_mode = st.radio(
         "Choose Target Disaster AI Model:",
-        ["🌊 Flood Detection Model", "⛰️ Landslide Detection Model"],
+        ["🌊 Flood Detection Model", "⛰️ Landslide Detection Model", "🔥 Wildfire Detection Model"],
         horizontal=True
     )
 
     is_landslide_mode = "Landslide" in selected_mode
+    is_wildfire_mode = "Wildfire" in selected_mode
 
-    if not is_landslide_mode:
+    is_flood_mode = not is_landslide_mode and not is_wildfire_mode
+
+    if is_flood_mode:
         # ── FLOOD MODEL UPLOAD BLOCKS ─────────────────────────────────────────
         st.subheader("🌊 Flood Detection Pipeline (Multi-Modal / Single Image)")
-        st.caption("Processes Optical NDWI, SAR radar backscatter, and Thermal IR for inundated area detection.")
+        st.caption("Processes Optical NDWI and SAR radar backscatter for inundated area detection.")
 
-        up_col1, up_col2, up_col3 = st.columns(3, gap="medium")
+        up_col1, up_col2 = st.columns(2, gap="medium")
 
         with up_col1:
             st.markdown('<div class="sensor-label">🔵 Optical Image</div>', unsafe_allow_html=True)
@@ -133,7 +155,7 @@ with tab_analyze:
                 label_visibility="collapsed",
             )
             if optical_file:
-                st.image(Image.open(io.BytesIO(optical_file.getvalue())), use_container_width=True, caption="Flood Optical")
+                safe_preview(optical_file.getvalue(), "Flood Optical")
 
         with up_col2:
             st.markdown('<div class="sensor-label">🟣 SAR Image</div>', unsafe_allow_html=True)
@@ -144,20 +166,9 @@ with tab_analyze:
                 label_visibility="collapsed",
             )
             if sar_file:
-                st.image(Image.open(io.BytesIO(sar_file.getvalue())), use_container_width=True, caption="Flood SAR")
+                safe_preview(sar_file.getvalue(), "Flood SAR")
 
-        with up_col3:
-            st.markdown('<div class="sensor-label">🔴 Thermal IR Image</div>', unsafe_allow_html=True)
-            thermal_file = st.file_uploader(
-                "Thermal IR (heat / hotspot)",
-                type=["jpg", "jpeg", "png", "tif", "tiff"],
-                key="flood_thermal",
-                label_visibility="collapsed",
-            )
-            if thermal_file:
-                st.image(Image.open(io.BytesIO(thermal_file.getvalue())), use_container_width=True, caption="Thermal IR")
-
-        any_uploaded = bool(optical_file or sar_file or thermal_file)
+        any_uploaded = bool(optical_file or sar_file)
         st.write("")
 
         btn_a, btn_b = st.columns([3, 1])
@@ -174,7 +185,7 @@ with tab_analyze:
         if not any_uploaded:
             st.info("📂 Please upload at least one satellite image above for Flood detection.")
 
-        current_key = f"flood|{optical_file.name if optical_file else ''}|{sar_file.name if sar_file else ''}|{thermal_file.name if thermal_file else ''}"
+        current_key = f"flood|{optical_file.name if optical_file else ''}|{sar_file.name if sar_file else ''}"
 
         if analyze_clicked and any_uploaded:
             reset_analysis()
@@ -190,9 +201,6 @@ with tab_analyze:
                     sar_bytes=sar_file.getvalue() if sar_file else None,
                     sar_name=sar_file.name if sar_file else None,
                     sar_mime=sar_file.type if sar_file else None,
-                    thermal_bytes=thermal_file.getvalue() if thermal_file else None,
-                    thermal_name=thermal_file.name if thermal_file else None,
-                    thermal_mime=thermal_file.type if thermal_file else None,
                     backend_url=backend_url,
                 )
             st.session_state["processing_time"] = round(time.time() - start, 2)
@@ -203,12 +211,12 @@ with tab_analyze:
             else:
                 st.error(data.get("error", "An unknown error occurred."))
 
-    else:
+    elif is_landslide_mode:
         # ── LANDSLIDE MODEL UPLOAD BLOCKS ─────────────────────────────────────
         st.subheader("⛰️ Landslide Detection Pipeline (PyTorch ResNet34 UNet)")
         st.caption("Activates the trained 14-Channel PyTorch Landslide Segmentation Model to detect slope movement, debris scars, and soil displacement.")
 
-        ls_col1, ls_col2, ls_col3 = st.columns(3, gap="medium")
+        ls_col1, ls_col2 = st.columns(2, gap="medium")
 
         with ls_col1:
             st.markdown('<div class="landslide-label">🟢 Landslide Optical / Scarring</div>', unsafe_allow_html=True)
@@ -219,7 +227,7 @@ with tab_analyze:
                 label_visibility="collapsed",
             )
             if ls_optical_file:
-                st.image(Image.open(io.BytesIO(ls_optical_file.getvalue())), use_container_width=True, caption="Landslide Optical")
+                safe_preview(ls_optical_file.getvalue(), "Landslide Optical")
 
         with ls_col2:
             st.markdown('<div class="landslide-label">⛰️ DEM Elevation / Slope</div>', unsafe_allow_html=True)
@@ -230,20 +238,9 @@ with tab_analyze:
                 label_visibility="collapsed",
             )
             if ls_dem_file:
-                st.image(Image.open(io.BytesIO(ls_dem_file.getvalue())), use_container_width=True, caption="DEM Slope Elevation")
+                safe_preview(ls_dem_file.getvalue(), "DEM Slope Elevation")
 
-        with ls_col3:
-            st.markdown('<div class="landslide-label">🟣 SAR Texture / Radar</div>', unsafe_allow_html=True)
-            ls_sar_file = st.file_uploader(
-                "SAR Radar Surface Texture",
-                type=["jpg", "jpeg", "png", "tif", "tiff"],
-                key="landslide_sar",
-                label_visibility="collapsed",
-            )
-            if ls_sar_file:
-                st.image(Image.open(io.BytesIO(ls_sar_file.getvalue())), use_container_width=True, caption="Landslide SAR Radar")
-
-        any_ls_uploaded = bool(ls_optical_file or ls_dem_file or ls_sar_file)
+        any_ls_uploaded = bool(ls_optical_file or ls_dem_file)
         st.write("")
 
         btn_a, btn_b = st.columns([3, 1])
@@ -260,7 +257,7 @@ with tab_analyze:
         if not any_ls_uploaded:
             st.info("📂 Please upload at least one imagery file in the Landslide blocks above.")
 
-        current_key = f"landslide|{ls_optical_file.name if ls_optical_file else ''}|{ls_dem_file.name if ls_dem_file else ''}|{ls_sar_file.name if ls_sar_file else ''}"
+        current_key = f"landslide|{ls_optical_file.name if ls_optical_file else ''}|{ls_dem_file.name if ls_dem_file else ''}"
 
         if analyze_ls_clicked and any_ls_uploaded:
             reset_analysis()
@@ -276,9 +273,6 @@ with tab_analyze:
                     landslide_dem_bytes=ls_dem_file.getvalue() if ls_dem_file else None,
                     landslide_dem_name=ls_dem_file.name if ls_dem_file else None,
                     landslide_dem_mime=ls_dem_file.type if ls_dem_file else None,
-                    landslide_sar_bytes=ls_sar_file.getvalue() if ls_sar_file else None,
-                    landslide_sar_name=ls_sar_file.name if ls_sar_file else None,
-                    landslide_sar_mime=ls_sar_file.type if ls_sar_file else None,
                     backend_url=backend_url,
                 )
             st.session_state["processing_time"] = round(time.time() - start, 2)
@@ -289,6 +283,78 @@ with tab_analyze:
             else:
                 st.error(data.get("error", "An unknown error occurred."))
 
+    elif is_wildfire_mode:
+        # ── WILDFIRE MODEL UPLOAD BLOCKS ──────────────────────────────────────
+        st.subheader("🔥 Wildfire Detection Pipeline (TensorFlow CNN .h5 Model)")
+        st.caption("Activates trained TensorFlow CNN (.h5) Wildfire Detection model to identify active fronts and smoke plumes.")
+
+        wf_col1, wf_col2 = st.columns(2, gap="medium")
+
+        with wf_col1:
+            st.markdown('<div class="sensor-label" style="color:#ff9800;">🟡 Optical / Smoke Plume</div>', unsafe_allow_html=True)
+            wf_optical_file = st.file_uploader(
+                "Optical Smoke & Burn Scar Imagery",
+                type=["jpg", "jpeg", "png", "tif", "tiff"],
+                key="wildfire_optical",
+                label_visibility="collapsed",
+            )
+            if wf_optical_file:
+                safe_preview(wf_optical_file.getvalue(), "Optical Smoke Plume")
+
+        with wf_col2:
+            st.markdown('<div class="sensor-label" style="color:#e91e63;">🟣 SAR Radar / Penetration</div>', unsafe_allow_html=True)
+            wf_sar_file = st.file_uploader(
+                "SAR Radar Smoke Penetration",
+                type=["jpg", "jpeg", "png", "tif", "tiff"],
+                key="wildfire_sar",
+                label_visibility="collapsed",
+            )
+            if wf_sar_file:
+                safe_preview(wf_sar_file.getvalue(), "SAR Radar Penetration")
+
+        any_wf_uploaded = bool(wf_optical_file or wf_sar_file)
+        st.write("")
+
+        btn_a, btn_b = st.columns([3, 1])
+        with btn_a:
+            analyze_wf_clicked = st.button(
+                "🔥 Run Wildfire TensorFlow ML Model Analysis",
+                use_container_width=True,
+                type="primary",
+                disabled=not any_wf_uploaded,
+            )
+        with btn_b:
+            st.button("🔄 Reset", use_container_width=True, on_click=reset_analysis)
+
+        if not any_wf_uploaded:
+            st.info("📂 Please upload at least one imagery file in the Wildfire blocks above.")
+
+        current_key = f"wildfire|{wf_optical_file.name if wf_optical_file else ''}|{wf_sar_file.name if wf_sar_file else ''}"
+
+        if analyze_wf_clicked and any_wf_uploaded:
+            reset_analysis()
+            st.session_state["analyzed_key"] = current_key
+
+            start = time.time()
+            with st.spinner("Running trained TensorFlow (.h5) Wildfire Model + Groq LLM assessment..."):
+                ok, data = analyze_image(
+                    model_type="wildfire",
+                    wildfire_optical_bytes=wf_optical_file.getvalue() if wf_optical_file else None,
+                    wildfire_optical_name=wf_optical_file.name if wf_optical_file else None,
+                    wildfire_optical_mime=wf_optical_file.type if wf_optical_file else None,
+                    wildfire_sar_bytes=wf_sar_file.getvalue() if wf_sar_file else None,
+                    wildfire_sar_name=wf_sar_file.name if wf_sar_file else None,
+                    wildfire_sar_mime=wf_sar_file.type if wf_sar_file else None,
+                    backend_url=backend_url,
+                )
+            st.session_state["processing_time"] = round(time.time() - start, 2)
+
+            if ok:
+                st.session_state["analysis_results"] = data
+                st.toast("✅ Wildfire model analysis complete & saved to history!", icon="🔥")
+            else:
+                st.error(data.get("error", "An unknown error occurred."))
+
     # ── Results panel ────────────────────────────────────────────────────────
     results = st.session_state.get("analysis_results")
 
@@ -296,45 +362,12 @@ with tab_analyze:
         st.divider()
         st.subheader("📊 Assessment & Intelligence Report")
 
-        prediction = results.get("prediction", {})
-        explanation = results.get("explanation", "")
-        proc_time   = st.session_state.get("processing_time")
+        disaster_type = str(results.get("disaster_type", "N/A")).upper()
+        res_payload = results.get("results", {})
+        proc_time = st.session_state.get("processing_time")
 
-        disaster_type = prediction.get("disaster_type", "N/A").upper()
-        severity      = prediction.get("severity", "low").lower()
-        confidence    = prediction.get("confidence", 0.0)
-        image_type    = prediction.get("image_type_detected", "Multi-Modal")
-        band_stats    = prediction.get("band_stats", {})
-
-        badge_class = f"severity-badge-{severity}"
-        badge_icon  = {"low": "🟢", "medium": "🟡", "moderate": "🟡", "high": "🟠", "critical": "🔴"}.get(severity, "🔴")
-
-        st.markdown(f"""
-        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
-            <div>
-                <span class="{badge_class}">{badge_icon} SEVERITY: {severity.upper()}</span>
-                <span style="font-size:0.9em; color:#aaaaaa; margin-left:10px;">
-                    Type: <b>{disaster_type}</b> &nbsp;|&nbsp; Model: {image_type}
-                </span>
-            </div>
-            {f'<div style="font-size:0.85em; color:#00d2ff; background:#131b26; padding:4px 10px; border-radius:12px; border:1px solid #1e2c3d;">⚡ {proc_time}s</div>' if proc_time else ''}
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown(f"""
-        <div class="explanation-card">
-            <h4 style="margin-top:0; color:#00d2ff; font-size:1.05em;">🤖 Groq LLM — Senior Analyst Brief</h4>
-            <p style="margin-bottom:0; color:#DDDDDD; font-size:0.95em; line-height:1.6;">{explanation}</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("##### Spectral & Model Risk Telemetry")
-        mc1, mc2 = st.columns(2)
-        with mc1:
-            st.pyplot(create_confidence_chart(confidence), use_container_width=True)
-        with mc2:
-            st.pyplot(create_band_stats_chart(band_stats), use_container_width=True)
-        st.caption(f"Debris / Water Pixel Ratio: {band_stats.get('water_pixel_ratio', 0.0):.1%}")
+        st.markdown(f"### 🛰️ Analysis Result ({disaster_type})")
+        st.json(res_payload)
 
 # ═══════════════════════ TAB 2 : ANALYSIS HISTORY ════════════════════════════
 with tab_history:
